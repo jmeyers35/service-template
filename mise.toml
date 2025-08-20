@@ -1,0 +1,294 @@
+# Service Template Development Environment Configuration
+# Manages tools, environment, and development tasks
+
+[tools]
+# Language runtimes
+node = "20.15.0"
+python = "3.11.9"
+
+# Package managers and tools
+uv = "latest"
+
+[settings]
+experimental = true
+python.uv_venv_auto = true
+
+[env]
+# Python environment
+PYTHONPATH = "./backend"
+PYTHONUNBUFFERED = "1"
+
+# Let mise manage the Python venv in backend directory
+_.python.venv = { path = "backend/.venv", create = true }
+
+# Development settings
+NODE_ENV = "development"
+ENVIRONMENT = "development"
+NEXT_TELEMETRY_DISABLED = "1"
+WATCHPACK_POLLING = "true"
+
+# Default task to run when just typing `mise`
+default_task = "help"
+
+[tasks.help]
+description = "Show available commands"
+run = '''
+echo "Service Template Development Commands"
+echo "===================================="
+echo ""
+echo "🚀 Quick Start:"
+echo "  mise setup    - First time setup (Supabase + env)"
+echo "  mise dev      - Start all services in Docker"
+echo "  mise local    - Run frontend/backend locally (faster)"
+echo ""
+echo "🔧 Development:"
+echo "  mise stop     - Stop all services"
+echo "  mise reset    - Reset database and containers"
+echo "  mise logs     - View service logs"
+echo "  mise clean    - Clean up Docker resources"
+echo ""
+echo "🧪 Testing:"
+echo "  mise test     - Run all tests"
+echo "  mise lint     - Run linting"
+echo "  mise typecheck - Run type checking"
+echo "  mise check    - Run lint + typecheck + test"
+echo ""
+echo "📦 Dependencies:"
+echo "  mise install  - Install/update tool versions"
+echo "  mise deps     - Install project dependencies"
+echo ""
+echo "📊 Monitoring:"
+echo "  Frontend:     http://localhost:3000"
+echo "  Backend:      http://localhost:8000"
+echo "  Supabase:     http://localhost:54323"
+echo ""
+echo "📚 Documentation:"
+echo "  See README.md for detailed setup instructions"
+'''
+
+[tasks.setup]
+description = "First time setup (Supabase + environment)"
+run = '''
+echo "🚀 Setting up local development environment..."
+if [ ! -f .env.local ]; then
+  echo "📝 Creating environment configuration..."
+  ./scripts/setup-env.sh
+else
+  echo "✅ .env.local already exists"
+fi
+echo "✅ Setup complete! Run 'mise dev' to start services."
+'''
+
+[tasks.dev]
+description = "Start all services in Docker"
+depends = ["setup"]
+run = '''
+echo "🚀 Starting development environment..."
+echo "📊 Services will be available at:"
+echo "   Frontend:     http://localhost:3000"
+echo "   Backend:      http://localhost:8000"
+echo "   Supabase:     http://localhost:54323"
+echo ""
+
+# Start Supabase in background
+echo "Starting Supabase..."
+supabase start > /dev/null 2>&1 || echo "Supabase already running"
+
+# Set up cleanup trap
+trap "echo '🛑 Shutting down services...'; docker-compose down; supabase stop" EXIT INT TERM
+
+# Run docker-compose in foreground
+docker-compose up --build
+'''
+
+[tasks.dev-bg]
+description = "Start services in background"
+depends = ["setup"]
+run = '''
+echo "🚀 Starting development environment in background..."
+
+# Start Supabase in background
+echo "Starting Supabase..."
+supabase start > /dev/null 2>&1 || echo "Supabase already running"
+
+# Start docker-compose in detached mode
+docker-compose up -d --build
+echo "✅ Services started in background"
+mise status
+'''
+
+[tasks.local]
+description = "Run frontend and backend locally (faster development)"
+depends = ["setup", "deps"]
+run = '''
+echo "🚀 Starting with local code execution..."
+echo "📊 Services:"
+echo "   Frontend:     http://localhost:3000 (local)"
+echo "   Backend:      http://localhost:8000 (local)"
+echo "   Supabase:     http://localhost:54323 (local)"
+echo ""
+
+# Start infrastructure
+echo "Starting Supabase..."
+supabase start > /dev/null 2>&1 || echo "Supabase already running"
+
+# Start application services locally
+echo "Starting application services locally..."
+cd frontend && npm run dev &
+FRONTEND_PID=$!
+
+cd ../backend && uv run python -m src.main &
+BACKEND_PID=$!
+
+echo "✅ Services started!"
+echo "Press Ctrl+C to stop all services"
+
+# Wait for interrupt
+trap "kill $FRONTEND_PID $BACKEND_PID 2>/dev/null" EXIT
+wait
+'''
+
+[tasks.stop]
+description = "Stop all services"
+run = '''
+echo "🛑 Stopping services..."
+docker-compose down
+supabase stop
+echo "✅ All services stopped"
+'''
+
+[tasks.reset]
+description = "Reset everything (database + containers)"
+run = '''
+echo "🔄 Resetting development environment..."
+echo "⚠️  This will delete all local data!"
+read -p "Are you sure? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  docker-compose down -v
+  supabase db reset
+  echo "✅ Reset complete! Run 'mise dev' to restart."
+else
+  echo "❌ Reset cancelled"
+fi
+'''
+
+[tasks.logs]
+description = "View service logs"
+run = '''
+echo "📋 Viewing service logs (Ctrl+C to exit)..."
+docker-compose logs -f
+'''
+
+[tasks.logs-frontend]
+description = "View frontend logs only"
+run = "docker-compose logs -f frontend"
+
+[tasks.logs-backend]
+description = "View backend logs only"
+run = "docker-compose logs -f backend"
+
+[tasks.status]
+description = "Check service status"
+run = '''
+echo "📊 Service Status:"
+echo "=================="
+docker-compose ps 2>/dev/null || echo "Docker Compose services not running"
+echo ""
+supabase status 2>/dev/null || echo "Supabase not running"
+'''
+
+[tasks.clean]
+description = "Clean up Docker resources"
+run = '''
+echo "🧹 Cleaning up Docker resources..."
+docker-compose down -v --remove-orphans
+docker system prune -f
+echo "✅ Cleanup complete"
+'''
+
+# Frontend tasks
+[tasks."lint:frontend"]
+description = "Lint frontend code"
+dir = "frontend"
+depends = ["deps:frontend"]
+run = "npm run lint"
+
+[tasks."typecheck:frontend"]
+description = "Type check frontend"
+dir = "frontend"
+depends = ["deps:frontend"]
+run = "npm run type-check"
+
+[tasks."test:frontend"]
+description = "Test frontend"
+dir = "frontend"
+depends = ["deps:frontend"]
+run = "npm test"
+
+[tasks."deps:frontend"]
+description = "Install frontend dependencies"
+dir = "frontend"
+run = "npm ci"
+
+# Backend tasks
+[tasks."lint:backend"]
+description = "Lint backend code"
+dir = "backend"
+depends = ["deps:backend"]
+run = "ruff check ."
+
+[tasks."typecheck:backend"]
+description = "Type check backend"
+dir = "backend"
+depends = ["deps:backend"]
+run = "mypy src/"
+
+[tasks."test:backend"]
+description = "Test backend"
+dir = "backend"
+depends = ["deps:backend"]
+run = "pytest"
+
+[tasks."deps:backend"]
+description = "Install backend dependencies"
+dir = "backend"
+run = "uv sync --group dev"
+
+# Composed tasks
+[tasks.lint]
+description = "Run all linting"
+depends = ["lint:frontend", "lint:backend"]
+
+[tasks.typecheck]
+description = "Run all type checking"
+depends = ["typecheck:frontend", "typecheck:backend"]
+
+[tasks.test]
+description = "Run all tests"
+depends = ["test:frontend", "test:backend"]
+
+[tasks.deps]
+description = "Install all dependencies"
+depends = ["deps:frontend", "deps:backend"]
+run = "echo '✅ Dependencies installed'"
+
+[tasks.check]
+description = "Run all code quality checks and tests"
+depends = ["lint", "typecheck", "test"]
+run = "echo '✅ All checks passed!'"
+
+[tasks."deps-update:frontend"]
+description = "Update frontend dependencies"
+dir = "frontend"
+run = "npm update"
+
+[tasks."deps-update:backend"]
+description = "Update backend dependencies"
+dir = "backend"
+run = "uv sync --group dev --upgrade"
+
+[tasks.deps-update]
+description = "Update all dependencies"
+depends = ["deps-update:frontend", "deps-update:backend"]
+run = "echo '✅ Dependencies updated'"
