@@ -10,7 +10,7 @@ A modern, production-ready service template with Next.js frontend, FastAPI backe
 - **Development**: Docker Compose for local development with hot reload
 - **Tooling**: mise for task automation and environment management
 - **Testing**: Jest for frontend, pytest for backend
-- **Deployment**: Ready for Vercel (frontend) and Railway (backend)
+- **Deployment**: Ready for Vercel (frontend) and Fly.io (backend)
 - **Type Safety**: Full TypeScript support across the stack
 
 ## 📋 Prerequisites
@@ -137,17 +137,19 @@ supabase db reset  # Apply all migrations
    ```
 3. Deploy automatically on push to main
 
-### Backend (Railway)
+### Backend (Fly.io)
 
-1. Connect your repository to Railway
-2. Set the start command: `uv run python -m src.main`
-3. Set environment variables:
+1. Install the Fly.io CLI: `curl -L https://fly.io/install.sh | sh`
+2. Sign up and authenticate: `fly auth signup` or `fly auth login`
+3. Navigate to the backend directory: `cd backend`
+4. Launch your app: `fly launch` (use existing fly.toml)
+5. Set environment variables:
+   ```bash
+   fly secrets set SUPABASE_URL=your-production-supabase-url
+   fly secrets set SUPABASE_SERVICE_KEY=your-production-service-key
    ```
-   SUPABASE_URL=your-production-supabase-url
-   SUPABASE_SERVICE_KEY=your-production-service-key
-   ENVIRONMENT=production
-   ```
-4. Deploy automatically on push to main
+6. Deploy: `fly deploy`
+7. For subsequent deployments, just run `fly deploy` from the backend directory
 
 ### Database (Supabase)
 
